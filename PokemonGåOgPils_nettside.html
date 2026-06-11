@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PokemonGåOgPils 🍺⚡</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- SRI-noter: unpkg.com støtter ikke stabile SRI-hashes for npm-pakker siden filer kan oppdateres.
+       Bruk heller jsDelivr (cdn.jsdelivr.net) ved produksjon — de støtter versjonslåste SRI-hashes.
+       For nå pinner vi eksplisitt versjon 1.9.4 og bruker crossorigin for CORS-validering. -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="anonymous"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'none';
+    script-src 'self' 'unsafe-inline' https://unpkg.com;
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com;
+    font-src https://fonts.gstatic.com;
+    img-src https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com data: blob:;
+    connect-src https://*.basemaps.cartocdn.com https://overpass-api.de https://overpass.kumi.systems;
+    frame-src 'none';
+    object-src 'none';
+    base-uri 'none';
+    form-action 'none';
+  ">
+  <style>
+    :root {
+      --yellow:#FFD700;--purple:#7C6FE8;--bg:#0D0D0F;--surface:#16161E;
+      --surface2:#1E1E2A;--text:#E8E8F0;--muted:#6B6B80;
+      --green:#4ADE80;--red:#F87171;--orange:#fb923c;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;}
+
+    #raid-banner{display:none;background:linear-gradient(90deg,#7f1d1d,#991b1b);border-bottom:2px solid var(--red);padding:10px 20px;text-align:center;font-size:13px;animation:pulse-border 1.5s ease-in-out infinite;}
+    #raid-banner.visible{display:block;}
+    @keyframes pulse-border{0%,100%{border-bottom-color:var(--red)}50%{border-bottom-color:#fca5a5}}
+    .raid-banner-inner{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;}
+    .raid-banner-title{font-family:'Press Start 2P',monospace;font-size:8px;color:#fca5a5;}
+
+    .hero{text-align:center;padding:50px 20px 36px;position:relative;overflow:hidden;}
+    .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(124,111,232,0.15) 0%,transparent 70%);pointer-events:none;}
+    .hero-badge{display:inline-block;font-family:'Press Start 2P',monospace;font-size:9px;color:var(--yellow);border:1px solid rgba(255,215,0,0.3);padding:6px 12px;border-radius:4px;margin-bottom:20px;letter-spacing:1px;}
+    .hero h1{font-family:'Press Start 2P',monospace;font-size:clamp(12px,3vw,26px);line-height:1.7;margin-bottom:14px;}
+    .hero h1 .y{color:var(--yellow);}
+    .hero p{color:var(--muted);font-size:14px;max-width:520px;margin:0 auto 28px;line-height:1.7;}
+    .pokeball{font-size:44px;display:block;margin:0 auto 18px;animation:float 3s ease-in-out infinite;}
+    @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+
+    .tabs{display:flex;justify-content:center;gap:8px;padding:0 20px 36px;flex-wrap:wrap;}
+    .tab-btn{font-family:'Press Start 2P',monospace;font-size:9px;padding:10px 18px;border-radius:6px;border:1px solid var(--surface2);background:var(--surface);color:var(--muted);cursor:pointer;transition:all 0.15s;}
+    .tab-btn.active{background:var(--yellow);color:#0D0D0F;border-color:var(--yellow);}
+    .tab-btn:hover:not(.active){border-color:var(--purple);color:var(--text);}
+
+    .section{max-width:1100px;margin:0 auto;padding:0 20px 80px;display:none;}
+    .section.active{display:block;}
+
+    .toolbar{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center;}
+    .search-box{flex:1;min-width:200px;padding:9px 14px;background:var(--surface);border:1px solid var(--surface2);border-radius:8px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;}
+    .search-box::placeholder{color:var(--muted);}
+    .search-box:focus{outline:none;border-color:var(--purple);}
+    .load-osm-btn{padding:9px 16px;background:var(--surface);border:1px solid var(--purple);border-radius:8px;color:var(--purple);font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all 0.15s;font-family:'Inter',sans-serif;}
+    .load-osm-btn:hover{background:var(--purple);color:#fff;}
+    .load-osm-btn:disabled{opacity:0.5;cursor:not-allowed;}
+    .osm-status{font-size:13px;padding:10px 14px;border-radius:8px;margin-bottom:16px;background:var(--surface);border-left:3px solid var(--purple);color:var(--muted);}
+    .osm-status.loading{border-left-color:var(--yellow);}
+    .osm-status.error{border-left-color:var(--red);color:var(--red);}
+    .osm-status.success{border-left-color:var(--green);}
+
+    .filters{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;}
+    .filter-group{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+    .filter-label{font-size:11px;color:var(--muted);white-space:nowrap;}
+    .filter-btn{font-size:12px;padding:6px 14px;border-radius:20px;border:1px solid var(--surface2);background:transparent;color:var(--muted);cursor:pointer;transition:all 0.15s;}
+    .filter-btn.active{background:var(--purple);color:#fff;border-color:var(--purple);}
+    .filter-divider{width:1px;height:24px;background:var(--surface2);margin:0 4px;}
+
+    .price-range{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted);}
+    .price-range input[type=range]{
+      -webkit-appearance:none;appearance:none;
+      width:130px;height:5px;border-radius:3px;
+      background:#1E1E2A;outline:none;cursor:pointer;
+    }
+    .price-range input[type=range]::-webkit-slider-thumb{
+      -webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+      background:var(--yellow);cursor:pointer;border:2px solid #0D0D0F;
+    }
+    .price-range input[type=range]::-moz-range-thumb{
+      width:16px;height:16px;border-radius:50%;
+      background:var(--yellow);cursor:pointer;border:2px solid #0D0D0F;
+    }
+    #price-val{color:var(--yellow);font-weight:700;min-width:80px;font-size:13px;}
+
+    .result-count{font-size:12px;color:var(--muted);margin-bottom:16px;}
+
+    .bar-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:16px;}
+
+    .bar-card{background:var(--surface);border:1px solid var(--surface2);border-radius:12px;padding:20px;cursor:pointer;transition:all 0.2s;position:relative;overflow:hidden;}
+    .bar-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--purple),var(--yellow));opacity:0;transition:opacity 0.2s;}
+    .bar-card:hover{border-color:rgba(124,111,232,0.5);transform:translateY(-2px);}
+    .bar-card:hover::before{opacity:1;}
+    .bar-card.selected{border-color:var(--yellow);background:var(--surface2);}
+    .bar-card.selected::before{opacity:1;background:var(--yellow);}
+    .bar-card.has-raid{border-color:rgba(248,113,113,0.6);}
+    .bar-card.has-raid::before{opacity:1;background:var(--red);}
+    .bar-card.no-poke{opacity:0.85;}
+
+    .type-badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:4px;margin-bottom:8px;font-weight:600;}
+    .type-bar{background:rgba(124,111,232,0.2);color:#a899f5;border:1px solid rgba(124,111,232,0.3);}
+    .type-food{background:rgba(251,146,60,0.15);color:var(--orange);border:1px solid rgba(251,146,60,0.3);}
+    .type-cafe{background:rgba(74,222,128,0.1);color:var(--green);border:1px solid rgba(74,222,128,0.3);}
+
+    .raid-live-badge{display:inline-flex;align-items:center;gap:5px;background:rgba(248,113,113,0.15);border:1px solid rgba(248,113,113,0.4);color:var(--red);font-size:11px;padding:4px 10px;border-radius:20px;margin-bottom:8px;animation:pulse-text 1.5s ease-in-out infinite;}
+    @keyframes pulse-text{0%,100%{opacity:1}50%{opacity:0.6}}
+    .raid-dot{width:7px;height:7px;border-radius:50%;background:var(--red);display:inline-block;}
+
+    .card-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;}
+    .bar-name-link{font-weight:600;font-size:15px;line-height:1.3;color:var(--text);text-decoration:none;border-bottom:1px dashed rgba(124,111,232,0.4);transition:color 0.15s,border-color 0.15s;}
+    .bar-name-link:hover{color:var(--purple);border-bottom-color:var(--purple);}
+    .bar-area{font-size:11px;color:var(--muted);margin-top:2px;}
+    .selected-badge{font-size:10px;background:var(--yellow);color:#0D0D0F;padding:3px 8px;border-radius:4px;font-weight:600;white-space:nowrap;}
+
+    .bar-meta{display:flex;gap:12px;margin:8px 0;flex-wrap:wrap;}
+    .meta-item{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:4px;}
+    .meta-item strong{color:var(--text);}
+    .open-dot{width:7px;height:7px;border-radius:50%;display:inline-block;}
+    .open-dot.open{background:var(--green);}
+    .open-dot.closed{background:var(--red);}
+    .open-dot.unknown{background:var(--muted);}
+    .pris-cheap{color:var(--green);font-weight:700;}
+    .pris-mid{color:var(--yellow);font-weight:700;}
+    .pris-high{color:var(--orange);font-weight:700;}
+    .pris-unknown{color:var(--muted);}
+    .osm-badge{display:inline-block;font-size:9px;color:var(--muted);background:rgba(107,107,128,0.12);border:1px solid rgba(107,107,128,0.25);padding:2px 7px;border-radius:4px;margin-left:6px;vertical-align:middle;}
+    .nopoke-notice.unknown{border-color:rgba(124,111,232,0.3);color:#a899f5;background:rgba(124,111,232,0.06);}
+    .tag-nopoke-unknown{background:rgba(107,107,128,0.1);border-color:rgba(107,107,128,0.3);color:var(--muted);}
+    .hh-badge{display:inline-block;font-size:10px;background:rgba(255,215,0,0.2);border:1px solid rgba(255,215,0,0.5);color:var(--yellow);padding:1px 7px;border-radius:4px;font-weight:700;margin-left:4px;animation:pulse-text 1.5s ease-in-out infinite;}
+    .hh-soon{display:inline-block;font-size:10px;color:var(--muted);margin-left:4px;opacity:0.8;}
+
+    .ratings{display:flex;gap:12px;margin:10px 0;}
+    .rating-item{display:flex;flex-direction:column;gap:2px;}
+    .rating-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;}
+    .rating-stars{font-size:13px;}
+
+    .poke-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;}
+    .poke-tag{font-size:11px;padding:3px 8px;border-radius:4px;border:1px solid;}
+    .tag-stop{background:rgba(74,222,128,0.1);border-color:rgba(74,222,128,0.3);color:var(--green);}
+    .tag-gym{background:rgba(248,113,113,0.1);border-color:rgba(248,113,113,0.3);color:var(--red);}
+    .tag-nest{background:rgba(255,215,0,0.1);border-color:rgba(255,215,0,0.3);color:var(--yellow);}
+    .tag-lure{background:rgba(124,111,232,0.2);border-color:rgba(124,111,232,0.4);color:#a899f5;}
+    .tag-raid{background:rgba(249,115,22,0.15);border-color:rgba(249,115,22,0.3);color:var(--orange);}
+    .tag-nopoke{background:rgba(107,107,128,0.1);border-color:rgba(107,107,128,0.3);color:var(--muted);}
+
+    .bar-desc{font-size:13px;color:var(--muted);line-height:1.6;margin-top:10px;}
+    .nopoke-notice{font-size:12px;color:var(--muted);background:rgba(107,107,128,0.08);border:1px dashed rgba(107,107,128,0.3);border-radius:6px;padding:7px 10px;margin:8px 0;text-align:center;}
+    .report-raid-btn{margin-top:12px;width:100%;padding:8px;background:transparent;border:1px dashed rgba(248,113,113,0.4);border-radius:6px;color:var(--red);font-size:12px;cursor:pointer;transition:all 0.15s;}
+    .report-raid-btn:hover{background:rgba(248,113,113,0.1);border-style:solid;}
+    .clear-raid-btn{margin-top:6px;width:100%;padding:6px;background:transparent;border:none;color:var(--muted);font-size:11px;cursor:pointer;text-decoration:underline;}
+
+    .route-builder{display:grid;grid-template-columns:340px 1fr;gap:24px;align-items:start;}
+    @media(max-width:768px){.route-builder{grid-template-columns:1fr;}}
+
+    .route-panel{background:var(--surface);border:1px solid var(--surface2);border-radius:12px;padding:20px;}
+    .route-panel h3{font-family:'Press Start 2P',monospace;font-size:10px;color:var(--yellow);margin-bottom:16px;}
+    .route-stop{display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface2);border-radius:8px;margin-bottom:8px;}
+    .stop-num{font-family:'Press Start 2P',monospace;font-size:9px;color:var(--yellow);min-width:20px;}
+    .stop-info{flex:1;}
+    .stop-name{font-size:13px;font-weight:500;}
+    .stop-area{font-size:11px;color:var(--muted);}
+    .stop-remove{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px;transition:color 0.15s;}
+    .stop-remove:hover{color:var(--red);}
+
+    .route-stats{margin:16px 0;padding:12px;background:var(--surface2);border-radius:8px;font-size:12px;color:var(--muted);line-height:1.9;}
+    .route-stats strong{color:var(--text);}
+
+    .btn{width:100%;padding:12px;border-radius:8px;border:none;cursor:pointer;font-weight:600;font-size:13px;transition:all 0.15s;}
+    .btn-primary{background:var(--yellow);color:#0D0D0F;}
+    .btn-primary:hover{background:#ffdf20;}
+    .btn-secondary{background:transparent;color:var(--muted);border:1px solid var(--surface2);margin-top:8px;}
+    .btn-secondary:hover{border-color:var(--red);color:var(--red);}
+
+    .empty-state{text-align:center;padding:24px;color:var(--muted);font-size:13px;line-height:1.8;}
+    #map{height:520px;border-radius:12px;border:1px solid var(--surface2);}
+    .hint{font-size:12px;color:var(--muted);margin-bottom:20px;padding:10px 14px;background:var(--surface);border-radius:8px;border-left:3px solid var(--purple);}
+
+    .preset-btn{display:block;width:100%;text-align:left;padding:10px 12px;background:var(--surface2);border:1px solid var(--surface2);border-radius:8px;color:var(--text);cursor:pointer;font-size:12px;margin-bottom:6px;transition:border-color 0.15s;}
+    .preset-btn:hover{border-color:var(--purple);}
+    .preset-btn span{display:block;font-size:10px;color:var(--muted);margin-top:2px;}
+
+    .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:1000;align-items:center;justify-content:center;padding:20px;}
+    .modal-overlay.open{display:flex;}
+    .modal{background:var(--surface);border:1px solid var(--surface2);border-radius:14px;padding:28px;max-width:440px;width:100%;position:relative;}
+    .modal h3{font-family:'Press Start 2P',monospace;font-size:10px;color:var(--red);margin-bottom:18px;}
+    .modal-close{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;}
+    .modal-close:hover{color:var(--text);}
+    .form-group{margin-bottom:14px;}
+    .form-label{font-size:11px;color:var(--muted);display:block;margin-bottom:6px;}
+    .form-select,.form-input{width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--surface2);border-radius:8px;color:var(--text);font-size:13px;font-family:'Inter',sans-serif;}
+    .form-select:focus,.form-input:focus{outline:none;border-color:var(--purple);}
+
+    @media(max-width:600px){
+      .bar-grid{grid-template-columns:1fr;}
+      .hero h1{font-size:11px;}
+      .hero{padding:36px 16px 28px;}
+      .section{padding:0 16px 60px;}
+      /* iOS zoomer inn på inputs med font-size under 16px — forhindre det */
+      .search-box,.form-select,.form-input{font-size:16px;}
+      /* Stable filtre vertikalt og gjør prisslideren full bredde */
+      .filters{flex-direction:column;align-items:stretch;gap:14px;}
+      .filter-divider{display:none;}
+      .filter-group{justify-content:flex-start;}
+      .price-range{width:100%;justify-content:space-between;}
+      .price-range input[type=range]{flex:1;width:auto;}
+      .tabs{gap:6px;}
+      .tab-btn{font-size:8px;padding:9px 14px;}
+      .filter-btn{padding:8px 14px;}
+      /* Større touch-targets på knapper */
+      .report-raid-btn,.preset-btn{padding:12px;}
+    }
+    @media(max-width:380px){
+      .hero h1{font-size:10px;line-height:1.8;}
+      .type-badge{font-size:9px;}
+    }
+  </style>
+</head>
+<body>
+
+<div id="raid-banner">
+  <div class="raid-banner-inner">
+    <span class="raid-banner-title">⚔️ AKTIVE RAIDS</span>
+    <span id="raid-banner-text" style="font-size:13px;"></span>
+  </div>
+</div>
+
+<div class="hero">
+  <span class="pokeball">⚡</span>
+  <div class="hero-badge">OSLO FIELD GUIDE v3.0</div>
+  <h1>Pokemon<span class="y">Gå</span>Og<span class="y">Pils</span></h1>
+  <p>Oslos beste barer, restauranter og steder for god pils og Pokémon GO. Fra craft-øl til rimelig lørdagspils.</p>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('spots')">📍 Steder</button>
+  <button class="tab-btn" onclick="switchTab('routes')">🗺️ Ruter</button>
+</div>
+
+<div id="tab-spots" class="section active">
+  <div class="toolbar">
+    <input class="search-box" type="text" id="search-input" placeholder="🔍 Søk etter bar, restaurant, område..." oninput="renderCards()">
+    <button class="load-osm-btn" id="load-osm-btn" onclick="loadAllOslo()">🌍 Last inn alle steder i Oslo</button>
+  </div>
+  <div id="osm-status" class="osm-status" style="display:none"></div>
+  <div class="filters">
+    <div class="filter-group">
+      <span class="filter-label">Type:</span>
+      <button class="filter-btn active" data-group="type" onclick="setFilter('type','all',this)">Alle</button>
+      <button class="filter-btn" data-group="type" onclick="setFilter('type','bar',this)">🍺 Bar</button>
+      <button class="filter-btn" data-group="type" onclick="setFilter('type','food',this)">🌮 Mat+pils</button>
+    </div>
+    <div class="filter-divider"></div>
+    <div class="filter-group">
+      <span class="filter-label">Pokemon:</span>
+      <button class="filter-btn" data-group="poke" onclick="setFilter('poke','gym',this)">🔴 Gym</button>
+      <button class="filter-btn" data-group="poke" onclick="setFilter('poke','stop',this)">🟢 Stop</button>
+      <button class="filter-btn" data-group="poke" onclick="setFilter('poke','raid',this)">⚔️ Raid</button>
+      <button class="filter-btn" data-group="poke" onclick="setFilter('poke','open',this)">🟩 Åpen nå</button>
+    </div>
+    <div class="filter-divider"></div>
+    <div class="price-range">
+      <span class="filter-label">Max pils:</span>
+      <input type="range" id="price-slider" min="49" max="130" step="5" value="130" oninput="updatePrice()">
+      <span id="price-val" style="min-width:80px;">alle priser</span>
+    </div>
+  </div>
+  <div class="result-count" id="result-count"></div>
+  <div class="bar-grid" id="bar-grid"></div>
+</div>
+
+<div id="tab-routes" class="section">
+  <div class="route-builder">
+    <div>
+      <div class="route-panel">
+        <h3>🍺 DIN RUTE</h3>
+        <div id="route-stops"><div class="empty-state">Gå til <strong style="color:var(--text)">Steder</strong> og trykk på steder for å bygge ruten din.</div></div>
+        <div class="route-stats" id="route-stats" style="display:none"></div>
+        <button class="btn btn-primary" id="show-route-btn" onclick="showRoute()" style="display:none">Vis rute på kart</button>
+        <button class="btn btn-secondary" onclick="clearRoute()">Nullstill rute</button>
+      </div>
+      <div class="route-panel" style="margin-top:16px;">
+        <h3>⚡ FERDIGE RUTER</h3>
+        <div id="preset-routes"></div>
+      </div>
+    </div>
+    <div>
+      <div class="hint">💡 Klikk på et navn i kartet for veibeskrivelse i Google Maps. Raidmarkører lyser rødt. Merk: siden Niantic ikke har offentlig API kan raids bare rapporteres manuelt av brukere.</div>
+      <div id="map"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="raid-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeRaidModal()">✕</button>
+    <h3>⚔️ RAPPORTER RAID</h3>
+    <div class="form-group">
+      <label class="form-label">Sted</label>
+      <select class="form-select" id="raid-bar-select"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Pokémon (valgfritt)</label>
+      <input class="form-input" id="raid-pokemon" type="text" placeholder="f.eks. Tyranitar, Mewtwo..." maxlength="40" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tier</label>
+      <select class="form-select" id="raid-tier">
+        <option value="1">⭐ Tier 1</option>
+        <option value="3">⭐⭐⭐ Tier 3</option>
+        <option value="5" selected>⭐⭐⭐⭐⭐ Tier 5 (Legendary)</option>
+        <option value="6">✨ Mega Raid</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tid igjen (minutter)</label>
+      <select class="form-select" id="raid-time">
+        <option value="10">~10 min</option>
+        <option value="20" selected>~20 min</option>
+        <option value="30">~30 min</option>
+        <option value="45">~45 min</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="submitRaid()" style="margin-top:4px;">Rapporter raid 🔴</button>
+  </div>
+</div>
+
+<script>
+// Leaflet-fix: ikke wrap i window.load — Leaflet lastes synkront nederst i body
+// Alle funksjoner er globale slik at onclick-attributter i HTML finner dem
+
+const curatedPlaces = [
+  // === BARER ===
+  { id:1,  type:'bar',  name:"Aku Aku Tiki Bar",     area:"Grünerløkka", lat:59.9215, lng:10.7555, beer:5, poke:5, tags:["stop","gym","lure"],      stops:4, gyms:2, hours:{open:15,close:1},  pilspris:99,  desc:"Tiki-vibes og cocktails midt i Pokémon-tett Grünerløkka. Minimum 3 PokéStops i lure-rekkevidde fra uteplassen." },
+  { id:2,  type:'bar',  name:"Røør",                  area:"Grünerløkka", lat:59.9230, lng:10.7530, beer:5, poke:4, tags:["stop","gym"],             stops:3, gyms:1, hours:{open:14,close:1},  pilspris:105, desc:"Craft-øl og avslappet stemning. God uteplass for å holde lure-moduler aktive." },
+  { id:3,  type:'bar',  name:"Olympen (Lompa)",       area:"Grønland",    lat:59.9125, lng:10.7620, beer:4, poke:5, tags:["stop","gym","nest","raid"],stops:5, gyms:3, hours:{open:11,close:23}, pilspris:89,  happyhour:{from:11,to:17,pris:69}, desc:"Historisk kro med masse Pokémon-aktivitet. Happy hour 11–17. Nær Botanisk hage, kjent nest-område." },
+  { id:4,  type:'bar',  name:"Fuglen",                area:"Frogner",     lat:59.9205, lng:10.7190, beer:4, poke:4, tags:["stop","gym"],             stops:3, gyms:1, hours:{open:8, close:1},  pilspris:110, desc:"Vintage-kafé med bra øl fra ettermiddag. Nær Frognerparken-clusteret av PokéStops." },
+  { id:5,  type:'bar',  name:"Internasjonalen",       area:"Grünerløkka", lat:59.9225, lng:10.7545, beer:5, poke:5, tags:["stop","gym","lure","raid"],stops:4, gyms:3, hours:{open:12,close:3},  pilspris:95,  desc:"Stor folksom bar med uteplass rett ved gyms. Raid-alerts nesten daglig om sommeren." },
+  { id:6,  type:'bar',  name:"Vaterland Bar",         area:"Grønland",    lat:59.9112, lng:10.7580, beer:3, poke:5, tags:["stop","gym","nest"],      stops:6, gyms:2, hours:{open:13,close:2},  pilspris:75,  happyhour:{from:13,to:18,pris:59}, desc:"Billig og bra. Happy hour 13–18 med 59kr pils. Grønland er ett av Oslos tetteste Pokémon-områder." },
+  { id:7,  type:'bar',  name:"Kulturhuset",           area:"Sentrum",     lat:59.9160, lng:10.7480, beer:4, poke:4, tags:["stop","gym"],             stops:4, gyms:2, hours:{open:11,close:1},  pilspris:98,  desc:"Bar i flere etasjer, nær Karl Johan-clusteret. Bra base for oversikt over kartet." },
+  { id:8,  type:'bar',  name:"Jaeger",                area:"Sentrum",     lat:59.9175, lng:10.7455, beer:4, poke:3, tags:["stop","gym","raid"],      stops:2, gyms:2, hours:{open:21,close:4},  pilspris:102, desc:"Nattklubb og bar. Best sent på kvelden når raids spawner hyppigere i sentrum." },
+  { id:9,  type:'bar',  name:"Schouskjelleren",       area:"Grünerløkka", lat:59.9255, lng:10.7580, beer:5, poke:4, tags:["stop","lure"],            stops:3, gyms:1, hours:{open:15,close:1},  pilspris:119, desc:"Mikrobryggeri med fantastisk øl. Rett utenfor Schoushagen der lure-moduler alltid er aktive." },
+  { id:10, type:'bar',  name:"Himkok",                area:"Sentrum",     lat:59.9168, lng:10.7430, beer:5, poke:3, tags:["stop","gym"],             stops:2, gyms:1, hours:{open:15,close:2},  pilspris:120, desc:"Blant Oslos beste barer, periode. Pokémon-aktiviteten er ikke toppklasse, men ølet veier opp." },
+  { id:11, type:'bar',  name:"Grønland Badhus",       area:"Grønland",    lat:59.9130, lng:10.7600, beer:4, poke:5, tags:["stop","gym","nest","raid"],stops:5, gyms:4, hours:{open:14,close:23}, pilspris:85,  desc:"Sommerbodega rett ved knutepunktet av Grønlands PokéGyms. Raid-duo-vennlig lokasjon." },
+  { id:12, type:'bar',  name:"Bar Boca",              area:"Majorstuen",  lat:59.9270, lng:10.7160, beer:4, poke:4, tags:["stop","gym"],             stops:3, gyms:1, hours:{open:16,close:1},  pilspris:108, desc:"Mysig nabolagsbar. Majorstuen har overraskende mange PokéStops som ikke alle kjenner til." },
+  { id:13, type:'bar',  name:"Crow Bar",              area:"Grünerløkka", lat:59.9218, lng:10.7562, beer:4, poke:4, tags:["stop","gym"],             stops:3, gyms:1, hours:{open:15,close:3},  pilspris:92,  desc:"Rå rockebar med billig øl og god stemning. Flere PokéStops rett utenfor." },
+  { id:14, type:'bar',  name:"Villa",                 area:"Majorstuen",  lat:59.9285, lng:10.7175, beer:3, poke:4, tags:["stop","gym","raid"],      stops:3, gyms:2, hours:{open:20,close:4},  pilspris:88,  desc:"Populær studentbar/nattklubb. Mye folk og mye Pokémon-aktivitet i området." },
+  { id:15, type:'bar',  name:"Bar Robinet",           area:"Sagene",      lat:59.9290, lng:10.7520, beer:5, poke:3, tags:["stop"],                   stops:2, gyms:0, hours:{open:16,close:1},  pilspris:115, desc:"Bistroba med sylskarp ølmeny. Roligere Pokémon-aktivitet, men utmerket øl." },
+
+  // === MAT + PILS ===
+  { id:20, type:'food', name:"Los Tacos Grünerløkka",   area:"Grünerløkka", lat:59.9210, lng:10.7540, beer:3, poke:4, tags:["stop","gym"],             stops:3, gyms:1, hours:{open:11,close:22}, pilspris:79,  happyhour:{from:11,to:21,pris:49}, desc:"Klassisk pilessted. 49kr pils hele dagen frem til 21:00. PokéStops rett utenfor inngangen." },
+  { id:21, type:'food', name:"Los Tacos Torggata",       area:"Sentrum",     lat:59.9155, lng:10.7490, beer:3, poke:4, tags:["stop","gym"],             stops:4, gyms:2, hours:{open:11,close:22}, pilspris:79,  happyhour:{from:11,to:21,pris:49}, desc:"Sentrumsfilial. 49kr pils til 21:00 — enda bedre Pokémon-dekning enn Grünerløkka-filialen." },
+  { id:46, type:'food', name:"Los Tacos Majorstuen",     area:"Majorstuen",  lat:59.9268, lng:10.7158, beer:3, poke:3, tags:["stop"],                   stops:2, gyms:0, hours:{open:11,close:22}, pilspris:79,  happyhour:{from:11,to:21,pris:49}, desc:"Majorstuen-filialen. 49kr pils til 21:00. Færre pokéstops enn de to andre, men veldig praktisk beliggenhet." },
+  { id:47, type:'food', name:"Los Tacos Aker Brygge",    area:"Aker Brygge", lat:59.9096, lng:10.7275, beer:3, poke:4, tags:["stop","gym"],             stops:3, gyms:2, hours:{open:11,close:22}, pilspris:79,  happyhour:{from:11,to:21,pris:49}, desc:"Havnefronten-filial. 49kr pils og havneutsikt. Aker Brygge er overraskende godt dekket med stops og gyms." },
+  { id:22, type:'food', name:"Illegal Burger",           area:"Grünerløkka", lat:59.9223, lng:10.7548, beer:3, poke:4, tags:["stop","gym"],             stops:3, gyms:1, hours:{open:11,close:22}, pilspris:85,  desc:"Burger og billig pils, stort uteserveringsareal om sommeren. Populær pils-lunsj-spot." },
+  { id:23, type:'food', name:"Syverkiosken",              area:"Grünerløkka", lat:59.9235, lng:10.7570, beer:4, poke:5, tags:["stop","gym","lure","nest"],stops:5, gyms:2, hours:{open:12,close:23}, pilspris:75,  desc:"Legendarisk Oslo-kiosk med øl og grillmat. Schoushagen-clusteret rundt er gull for Pokémon." },
+  { id:24, type:'food', name:"Torggata Botaniske",        area:"Sentrum",     lat:59.9150, lng:10.7500, beer:4, poke:4, tags:["stop","gym"],             stops:4, gyms:1, hours:{open:11,close:1},  pilspris:90,  desc:"Bar og mat med grønn profil. God beliggenhet i Torggata-korridoren med mange PokéStops." },
+  { id:25, type:'food', name:"Fiskeriet",                 area:"Grønland",    lat:59.9118, lng:10.7590, beer:3, poke:5, tags:["stop","gym","nest"],      stops:5, gyms:2, hours:{open:11,close:21}, pilspris:82,  desc:"Sjømat og billig pils i Grønlands tetteste Pokémon-sone. Perfekt kombinasjon." },
+  { id:26, type:'food', name:"Tim Wendelboe",             area:"Grünerløkka", lat:59.9240, lng:10.7555, beer:2, poke:4, tags:["stop"],                   stops:2, gyms:0, hours:{open:8, close:18}, pilspris:75,  desc:"Primært kaffe, men serverer øl på ettermiddag. Rett ved Birkelunden-stops." },
+  { id:27, type:'food', name:"Mathallen Oslo",            area:"Vulkan",      lat:59.9258, lng:10.7506, beer:4, poke:4, tags:["stop","gym"],             stops:3, gyms:1, hours:{open:10,close:21}, pilspris:95,  desc:"Matmarked med mange barsteder og rimelig pils. Akerselva-gangstien er full av PokéStops." },
+  { id:28, type:'food', name:"Pøbel Streetfood",          area:"Grønland",    lat:59.9122, lng:10.7605, beer:3, poke:5, tags:["stop","gym","raid"],      stops:5, gyms:3, hours:{open:12,close:22}, pilspris:78,  desc:"Streetfood og øl i hjertet av Grønlands Pokémon-sone. Rimelig og bra pokédekning." },
+  { id:29, type:'food', name:"Smelteverket",              area:"Vulkan",      lat:59.9263, lng:10.7512, beer:5, poke:4, tags:["stop","gym","lure"],      stops:4, gyms:1, hours:{open:12,close:1},  pilspris:98,  desc:"Stor bardisk med mange norske craft-øl. Vulkan-området har god PokéStop-dekning langs elva." },
+  { id:30, type:'food', name:"Brutus",                    area:"Grünerløkka", lat:59.9207, lng:10.7558, beer:4, poke:4, tags:["stop","gym"],             stops:3, gyms:1, hours:{open:11,close:22}, pilspris:88,  desc:"Vinbar og mat. Avslappet stemning og enkelt å spille mens du venter på maten." },
+  { id:48, type:'food', name:"Döner & Gyros Grønland",    area:"Grønland",    lat:59.9115, lng:10.7612, beer:2, poke:5, tags:["stop","gym"],             stops:4, gyms:2, hours:{open:11,close:3},  pilspris:55,  desc:"Billigste pils i Grønland-området. Oppe til 03:00 og alltid aktive PokéStops rett utenfor." },
+  { id:49, type:'food', name:"Åpent Bakeri Vulkan",       area:"Vulkan",      lat:59.9261, lng:10.7508, beer:2, poke:3, tags:["stop"],                   stops:2, gyms:0, hours:{open:7, close:18}, pilspris:79,  desc:"Bakeri og kafé ved Akerselva. Øl fra ettermiddag, fint uteserveringsareal langs elva med PokéStop rett ved." },
+
+  // === STEDER UTEN POKÉSTOPS/GYMS (godt pilssted, men ingen Pokémon-aktivitet) ===
+  { id:40, type:'bar',  name:"Territoriet",             area:"Grünerløkka",  lat:59.9248, lng:10.7588, beer:5, poke:0, tags:["nopoke"], stops:0, gyms:0, hours:{open:16,close:1},  pilspris:112, desc:"En av Europas beste ølbarer med 600+ sorter. Ingen PokéStops eller gyms i umiddelbar nærhet — rent pilssted." },
+  { id:41, type:'bar',  name:"Grünerløkka Brygghus",    area:"Grünerløkka",  lat:59.9268, lng:10.7595, beer:5, poke:0, tags:["nopoke"], stops:0, gyms:0, hours:{open:15,close:0},  pilspris:104, desc:"Eget mikrobryggeri med fersk pils på fat. Ingen stops eller gyms her." },
+  { id:42, type:'bar',  name:"Bortenfor",               area:"Tøyen",        lat:59.9135, lng:10.7720, beer:4, poke:0, tags:["nopoke"], stops:0, gyms:0, hours:{open:16,close:1},  pilspris:89,  desc:"Avslappet nabolagsbar på Tøyen. God og rimelig pils, men ingen Pokémon-aktivitet." },
+  { id:43, type:'food', name:"Hot Tomato",              area:"Frogner",      lat:59.9192, lng:10.7095, beer:3, poke:0, tags:["nopoke"], stops:0, gyms:0, hours:{open:12,close:23}, pilspris:84,  desc:"Pizza og pils i rolige Frogner. Greit pilssted, men ingen PokéStops eller gyms her." },
+  { id:44, type:'bar',  name:"St. Hanshaugen Ølbar",    area:"St.Hanshaugen", lat:59.9275, lng:10.7388, beer:4, poke:0, tags:["nopoke"], stops:0, gyms:0, hours:{open:15,close:1},  pilspris:96,  desc:"Koselig ølbar ved parken. Solid utvalg, men ingen Pokémon-aktivitet på stedet." },
+  { id:45, type:'food', name:"Lofthus Samvirkelag",     area:"Frogner",      lat:59.9230, lng:10.7050, beer:3, poke:0, tags:["nopoke"], stops:0, gyms:0, hours:{open:11,close:23}, pilspris:92,  desc:"Klassisk restaurant med uteservering i solen. Ingen Pokémon-aktivitet rundt." },
+  { id:50, type:'bar',  name:"Bøker og Børst",          area:"Grünerløkka",  lat:59.9222, lng:10.7568, beer:4, poke:0, tags:["nopoke"], stops:0, gyms:0, hours:{open:15,close:1},  pilspris:98,  desc:"Kombinasjon av bruktbokhandel og bar. Ølutvalget er bra, men stedet ligger akkurat utenfor pokéson." },
+  { id:51, type:'bar',  name:"Hønseapoteket",           area:"Sentrum",      lat:59.9145, lng:10.7465, beer:4, poke:0, tags:["nopoke"], stops:0, gyms:0, hours:{open:16,close:2},  pilspris:105, desc:"Populær sentrumsbar i en gammel apotekbygning. Ingen PokéStops på selve stedet." },
+  { id:52, type:'bar',  name:"Grünerløkka Lufthavn",    area:"Grünerløkka",  lat:59.9232, lng:10.7535, beer:4, poke:0, tags:["nopoke"], stops:0, gyms:0, hours:{open:15,close:2},  pilspris:95,  happyhour:{from:15,to:18,pris:69}, desc:"Klassisk Grünerløkka-bar. Happy hour 15–18 med 69kr pils. Ingen pokéstops rett ved, men greit å kombinere med en tur rundt kvartalet." },
+];
+
+// Marker alle kuraterte steder som "curated" og bygg den aktive places-listen
+curatedPlaces.forEach(p => { p.source = 'curated'; });
+let places = curatedPlaces.slice();
+
+// Sett av høye IDer til OSM-steder så de ikke kolliderer med kuraterte (1-99)
+let nextOsmId = 1000;
+let osmLoaded = false;
+
+const presetRoutes = [
+  { name:"🍺 Grünerløkka Grand Tour",    desc:"4 barer, 14+ stops, ~2km", ids:[2,1,5,9] },
+  { name:"⚔️ Raid Night Oslo",           desc:"Raid-fokus, 3 barer, best gym-dekning", ids:[5,3,11] },
+  { name:"🏙️ Sentrum Crawl",            desc:"3 steder i sentrum, enkelt å gå", ids:[7,21,8] },
+  { name:"🌮 Billig Pils-runde",         desc:"Under 85kr, 4 steder", ids:[6,20,23,25] },
+  { name:"🟢 Stop Harvest",              desc:"Maks PokéStop-dekning, 4 steder", ids:[6,11,3,7] },
+  { name:"🍔 Mat+Pils+Pokemon",          desc:"Restauranter med god pokédekning", ids:[20,22,27,29] },
+];
+
+let activeTypeFilter = 'all';
+let activePokeFilter = null;
+let maxPrice = 130;
+let selectedPlaces = [];
+let map = null, routeLayer = null, markerLayer = null;
+let activeRaids = {};
+
+function isHappyHour(p) {
+  if(!p.happyhour) return false;
+  const h = new Date().getHours();
+  const {from, to} = p.happyhour;
+  return h >= from && h < to;
+}
+function currentPrice(p) {
+  if(p.pilspris === null) return null;
+  if(isHappyHour(p)) return p.happyhour.pris;
+  return p.pilspris;
+}
+function isOpen(p) {
+  if(!p.hours || p.hours.raw) return null; // ukjent
+  const h = new Date().getHours();
+  const {open,close} = p.hours;
+  return close>open ? (h>=open && h<close) : (h>=open || h<close);
+}
+function openStatus(p) {
+  if(!p.hours) return {open:null, label:'Åpningstider ukjent'};
+  if(p.hours.raw) return {open:null, label:'Åpent: '+p.hours.raw};
+  const {open,close} = p.hours;
+  const pad = n => (n<10?'0':'')+n+':00';
+  return isOpen(p)
+    ? {open:true,  label:'Åpen · stenger '+pad(close)}
+    : {open:false, label:'Stengt · åpner '+pad(open)};
+}
+function stars(n){if(n===null||n===undefined) return '<span style="opacity:0.4;font-size:12px">ukjent</span>'; return '⭐'.repeat(n)+'<span style="opacity:0.2">⭐</span>'.repeat(5-n);}
+function tagLabel(t){return {stop:'🟢 PokéStop',gym:'🔴 Gym',nest:'⭐ Nest',lure:'💜 Lure-aktiv',raid:'⚔️ Raids',nopoke:'📵 Ingen stops','nopoke-unknown':'❓ Pokémon-data ukjent'}[t]||t;}
+function tierLabel(t){return {1:'T1',3:'T3',5:'Legendary',6:'Mega'}[t]||'T'+t;}
+function typeLabel(t){return {bar:'Bar',food:'Mat+Pils',cafe:'Kafé'}[t]||t;}
+function typeClass(t){return {bar:'type-bar',food:'type-food',cafe:'type-cafe'}[t]||'type-bar';}
+function priceClass(p){if(p===null||p===undefined) return 'pris-unknown'; return p<=89?'pris-cheap':p<=105?'pris-mid':'pris-high';}
+
+function pruneExpiredRaids(){
+  const now=Date.now();
+  Object.keys(activeRaids).forEach(id=>{if(activeRaids[id].expiresAt<now)delete activeRaids[id];});
+}
+
+// Escaper brukerinput slik at det ikke kan kjøres som HTML
+function esc(str){
+  if(!str) return '';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;').replace(/'/g,'&#x27;');
+}
+
+// ====== OSM / OVERPASS: hent alle barer og spisesteder i Oslo ======
+const OSM_CACHE_KEY = 'pgop_osm_cache_v1';
+const OSM_CACHE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 1 uke
+
+function setOsmStatus(msg, cls){
+  const el = document.getElementById('osm-status');
+  el.style.display = 'block';
+  el.className = 'osm-status' + (cls ? ' ' + cls : '');
+  el.textContent = msg;
+}
+
+// Avgjør type ut fra OSM amenity-tag
+function osmTypeFromTags(tags){
+  const a = tags.amenity;
+  if(a === 'bar' || a === 'pub' || a === 'biergarten') return 'bar';
+  return 'food'; // restaurant, cafe, fast_food
+}
+
+// Konverter et OSM-element til vårt place-format
+function osmToPlace(el){
+  const tags = el.tags || {};
+  const lat = el.lat || (el.center && el.center.lat);
+  const lng = el.lon || (el.center && el.center.lon);
+  if(!lat || !lng || !tags.name) return null;
+
+  // Prøv å lese åpningstider hvis de finnes (forenklet — OSM-format er komplekst)
+  let hours = null;
+  if(tags.opening_hours && /\d/.test(tags.opening_hours)){
+    hours = { raw: tags.opening_hours };
+  }
+
+  return {
+    id: nextOsmId++,
+    type: osmTypeFromTags(tags),
+    name: tags.name,
+    area: tags['addr:suburb'] || tags['addr:city'] || 'Oslo',
+    lat, lng,
+    beer: null,            // ukjent
+    poke: 0,
+    tags: ['nopoke-unknown'],
+    stops: 0, gyms: 0,
+    hours,                 // null eller {raw}
+    pilspris: null,        // ukjent
+    desc: null,
+    source: 'osm'
+  };
+}
+
+async function fetchOverpass(){
+  // Oslo bounding box (sør, vest, nord, øst)
+  const bbox = '59.85,10.65,59.97,10.88';
+  const query = `[out:json][timeout:30];
+    (
+      nwr["amenity"~"^(bar|pub|biergarten)$"](${bbox});
+      nwr["amenity"="restaurant"]["diet:beer"!="no"](${bbox});
+    );
+    out center tags;`;
+
+  const endpoints = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter'
+  ];
+
+  let lastErr;
+  for(const url of endpoints){
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: query
+      });
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } catch(e){
+      lastErr = e;
+    }
+  }
+  throw lastErr;
+}
+
+function mergeOsmData(elements){
+  // Bygg sett av eksisterende navn (lowercase) for å unngå duplikater av kuraterte steder
+  const existingNames = new Set(curatedPlaces.map(p => p.name.toLowerCase().trim()));
+  const seen = new Set();
+  const added = [];
+
+  for(const el of elements){
+    const place = osmToPlace(el);
+    if(!place) continue;
+    const key = place.name.toLowerCase().trim();
+    // hopp over hvis allerede kuratert eller allerede sett i denne batchen
+    if(existingNames.has(key) || seen.has(key + place.lat.toFixed(4))) continue;
+    seen.add(key + place.lat.toFixed(4));
+    added.push(place);
+  }
+  return added;
+}
+
+async function loadAllOslo(){
+  if(osmLoaded){
+    setOsmStatus('Alle steder er allerede lastet inn. ' + places.length + ' steder totalt.', 'success');
+    return;
+  }
+  const btn = document.getElementById('load-osm-btn');
+  btn.disabled = true;
+
+  // Sjekk cache først
+  try {
+    const cached = localStorage.getItem(OSM_CACHE_KEY);
+    if(cached){
+      const parsed = JSON.parse(cached);
+      if(parsed.time && (Date.now() - parsed.time) < OSM_CACHE_MAX_AGE && Array.isArray(parsed.places)){
+        parsed.places.forEach(p => { p.id = nextOsmId++; places.push(p); });
+        osmLoaded = true;
+        setOsmStatus('✓ Lastet ' + parsed.places.length + ' steder fra Oslo (mellomlagret). Totalt ' + places.length + ' steder.', 'success');
+        btn.textContent = '✓ Alle steder lastet';
+        renderCards();
+        return;
+      }
+    }
+  } catch(e){ /* localStorage utilgjengelig — fortsett til nettverk */ }
+
+  setOsmStatus('⏳ Henter alle barer og spisesteder i Oslo fra OpenStreetMap... (kan ta 10-20 sek)', 'loading');
+
+  try {
+    const data = await fetchOverpass();
+    const added = mergeOsmData(data.elements || []);
+
+    added.forEach(p => places.push(p));
+    osmLoaded = true;
+
+    // Lagre i cache (uten id, siden den settes på nytt ved innlasting)
+    try {
+      localStorage.setItem(OSM_CACHE_KEY, JSON.stringify({
+        time: Date.now(),
+        places: added.map(p => { const c = {...p}; delete c.id; return c; })
+      }));
+    } catch(e){ /* cache valgfritt */ }
+
+    setOsmStatus('✓ La til ' + added.length + ' nye steder fra OpenStreetMap. Totalt ' + places.length + ' steder. Steder uten kjent Pokémon-data er merket.', 'success');
+    btn.textContent = '✓ Alle steder lastet';
+    renderCards();
+  } catch(e){
+    setOsmStatus('⚠️ Kunne ikke hente data fra OpenStreetMap akkurat nå. Prøv igjen om litt. (' + e.message + ')', 'error');
+    btn.disabled = false;
+  }
+}
+
+function updatePrice(){
+  const slider = document.getElementById('price-slider');
+  const v = parseInt(slider.value);
+  maxPrice = v;
+  const label = document.getElementById('price-val');
+  label.textContent = v >= 130 ? 'alle priser' : v + ' kr';
+  // fargelegg slider-sporet
+  const pct = ((v - 49) / (130 - 49)) * 100;
+  slider.style.background = `linear-gradient(to right, #FFD700 0%, #FFD700 ${pct}%, #1E1E2A ${pct}%, #1E1E2A 100%)`;
+  renderCards();
+}
+
+function setFilter(kind, val, el){
+  if(kind==='type'){
+    activeTypeFilter = val;
+    // fjern active fra alle type-knapper
+    document.querySelectorAll('[data-group="type"]').forEach(b => b.classList.remove('active'));
+  } else {
+    // poke-filtre er toggle
+    if(activePokeFilter === val){
+      activePokeFilter = null;
+      el.classList.remove('active');
+      renderCards();
+      return;
+    }
+    activePokeFilter = val;
+    document.querySelectorAll('[data-group="poke"]').forEach(b => b.classList.remove('active'));
+  }
+  el.classList.add('active');
+  renderCards();
+}
+
+function renderCards(){
+  pruneExpiredRaids();
+  const query = document.getElementById('search-input').value.trim().toLowerCase();
+
+  let filtered = places.filter(p=>{
+    if(activeTypeFilter!=='all' && p.type!==activeTypeFilter) return false;
+    const cp = currentPrice(p);
+    if(cp !== null && cp > maxPrice) return false;
+    if(cp === null && maxPrice < 130) return false;
+    if(activePokeFilter==='open' && isOpen(p) !== true) return false;
+    // Når man filtrerer på poké-aktivitet, skjul steder uten stops/gyms (men de er fortsatt søkbare)
+    if((activePokeFilter==='gym' || activePokeFilter==='stop' || activePokeFilter==='raid')
+       && !p.tags.some(t=>['stop','gym'].includes(t))) return false;
+    if(query){
+      const hay = (p.name+' '+p.area+' '+(p.desc||'')+' '+p.type).toLowerCase();
+      if(!hay.includes(query)) return false;
+    }
+    return true;
+  });
+
+  // Sorter basert på aktivt pokéfilter — ikke skjul, men ranger
+  if(activePokeFilter === 'gym'){
+    filtered.sort((a,b) => b.gyms - a.gyms);
+  } else if(activePokeFilter === 'stop'){
+    filtered.sort((a,b) => b.stops - a.stops);
+  } else if(activePokeFilter === 'raid'){
+    // raid-steder først, deretter gyms
+    filtered.sort((a,b) => {
+      const aRaid = a.tags.includes('raid') ? 1 : 0;
+      const bRaid = b.tags.includes('raid') ? 1 : 0;
+      if(bRaid !== aRaid) return bRaid - aRaid;
+      return b.gyms - a.gyms;
+    });
+  }
+
+  document.getElementById('result-count').textContent =
+    filtered.length + ' steder' +
+    (activePokeFilter==='gym'  ? ' · sortert etter flest gyms'    :
+     activePokeFilter==='stop' ? ' · sortert etter flest stops'   :
+     activePokeFilter==='raid' ? ' · raid-steder øverst'          : '');
+
+  document.getElementById('bar-grid').innerHTML = filtered.map(p=>{
+    const sel=selectedPlaces.find(s=>s.id===p.id);
+    const selIdx=selectedPlaces.findIndex(s=>s.id===p.id);
+    const status=openStatus(p);
+    const raid=activeRaids[p.id];
+    const timeLeft=raid?Math.max(0,Math.round((raid.expiresAt-Date.now())/60000)):0;
+    const mapsUrl=`https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;
+    const hasPoke=p.tags.some(t=>['stop','gym'].includes(t));
+    const relAttr = 'rel="noopener noreferrer"';
+    const sortLabel = activePokeFilter==='gym'  ? `<span style="background:rgba(248,113,113,0.15);border:1px solid rgba(248,113,113,0.3);color:var(--red);font-size:11px;padding:2px 8px;border-radius:4px;margin-left:6px;">🔴 ${p.gyms} gyms</span>`
+                    : activePokeFilter==='stop' ? `<span style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);color:var(--green);font-size:11px;padding:2px 8px;border-radius:4px;margin-left:6px;">🟢 ${p.stops} stops</span>`
+                    : activePokeFilter==='raid' && p.tags.includes('raid') ? `<span style="background:rgba(249,115,22,0.15);border:1px solid rgba(249,115,22,0.3);color:var(--orange);font-size:11px;padding:2px 8px;border-radius:4px;margin-left:6px;">⚔️ Raid-sted</span>`
+                    : '';
+
+    const isOsm = p.source === 'osm';
+    const hasUnknownPoke = p.tags.includes('nopoke-unknown');
+    const openDotClass = status.open === true ? 'open' : status.open === false ? 'closed' : 'unknown';
+    const hh = isHappyHour(p);
+    const nowPrice = currentPrice(p);
+    const priceDisplay = nowPrice !== null
+      ? `🍺 <strong class="${priceClass(nowPrice)}">${nowPrice} kr</strong>${hh ? ` <span class="hh-badge">🟡 Happy Hour!</span>` : p.happyhour ? ` <span class="hh-soon">HH ${p.happyhour.from}–${p.happyhour.to}</span>` : ''}`
+      : `🍺 <span style="opacity:0.5">pris ukjent</span>`;
+
+    return `<div class="bar-card ${sel?'selected':''} ${raid?'has-raid':''}" onclick="togglePlace(${p.id})">
+      <span class="type-badge ${typeClass(p.type)}">${typeLabel(p.type)}</span>
+      ${isOsm?`<span class="osm-badge">fra OpenStreetMap</span>`:''}
+      ${raid?`<div class="raid-live-badge"><span class="raid-dot"></span>RAID LIVE${raid.pokemon?' — '+esc(raid.pokemon):''} · ${tierLabel(raid.tier)} · ${timeLeft} min igjen</div>`:''}
+      <div class="card-header">
+        <div>
+          <a class="bar-name-link" href="${mapsUrl}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${esc(p.name)} 🗺️</a>${sortLabel}
+          <div class="bar-area">📍 ${esc(p.area)}</div>
+        </div>
+        ${sel?`<span class="selected-badge">#${selIdx+1}</span>`:''}
+      </div>
+      <div class="bar-meta">
+        <span class="meta-item"><span class="open-dot ${openDotClass}"></span> ${esc(status.label)}</span>
+        <span class="meta-item">${priceDisplay}</span>
+      </div>
+      <div class="ratings">
+        <div class="rating-item"><span class="rating-label">Øl</span><span class="rating-stars">${stars(p.beer)}</span></div>
+        ${hasPoke?`
+        <div class="rating-item"><span class="rating-label">Pokémon</span><span class="rating-stars">${stars(p.poke)}</span></div>
+        <div class="rating-item"><span class="rating-label">Stops/Gyms</span><span style="font-size:13px;color:var(--text)">🟢${p.stops} 🔴${p.gyms}</span></div>`:''}
+      </div>
+      ${hasUnknownPoke?`<div class="nopoke-notice unknown">❓ Pokémon-data ikke registrert for dette stedet</div>`
+        :!hasPoke?`<div class="nopoke-notice">📵 Ingen PokéStops eller gyms her — rent pilssted</div>`:''}
+      <div class="poke-tags">${p.tags.map(t=>`<span class="poke-tag tag-${t}">${tagLabel(t)}</span>`).join('')}</div>
+      ${p.desc?`<div class="bar-desc">${esc(p.desc)}</div>`:''}
+      ${hasPoke?`<button class="report-raid-btn" onclick="event.stopPropagation();openRaidModal(${p.id})">⚔️ Rapporter raid her</button>`:''}
+      ${raid?`<button class="clear-raid-btn" onclick="event.stopPropagation();clearRaid(${p.id})">Fjern raid-varsel</button>`:''}
+    </div>`;
+  }).join('') || '<div class="empty-state">Ingen steder matcher søket ditt. Prøv å justere filtrene.</div>';
+
+  updateRaidBanner();
+}
+
+function updateRaidBanner(){
+  pruneExpiredRaids();
+  const ids=Object.keys(activeRaids).map(Number);
+  const banner=document.getElementById('raid-banner');
+  if(!ids.length){banner.classList.remove('visible');return;}
+  banner.classList.add('visible');
+  document.getElementById('raid-banner-text').textContent=ids.map(id=>{
+    const p=places.find(b=>b.id===id);
+    const r=activeRaids[id];
+    const mins=Math.max(0,Math.round((r.expiresAt-Date.now())/60000));
+    return `${p.name}${r.pokemon?' ('+esc(r.pokemon)+')':''} — ${mins} min`;
+  }).join(' · ');
+}
+
+function openRaidModal(placeId){
+  const hasPokePlaces=places.filter(p=>p.tags.some(t=>['stop','gym'].includes(t)));
+  document.getElementById('raid-bar-select').innerHTML=hasPokePlaces.map(p=>
+    `<option value="${p.id}" ${p.id===placeId?'selected':''}>${esc(p.name)}</option>`).join('');
+  document.getElementById('raid-pokemon').value='';
+  document.getElementById('raid-modal').classList.add('open');
+}
+function closeRaidModal(){document.getElementById('raid-modal').classList.remove('open');}
+// Rate-limiting: maks 5 raid-rapporter per 60 sekunder per bruker
+const raidRateLimit = { count: 0, resetAt: 0 };
+
+function submitRaid(){
+  const now = Date.now();
+  if (now > raidRateLimit.resetAt) {
+    raidRateLimit.count = 0;
+    raidRateLimit.resetAt = now + 60000;
+  }
+  if (raidRateLimit.count >= 5) {
+    alert('For mange rapporter på kort tid. Vent litt og prøv igjen.');
+    return;
+  }
+  raidRateLimit.count++;
+
+  const rawId = parseInt(document.getElementById('raid-bar-select').value);
+  // Valider at ID faktisk finnes i places-arrayen — avvis ukjente IDer
+  const validPlace = places.find(p => p.id === rawId);
+  if (!validPlace) return;
+
+  const rawPokemon = document.getElementById('raid-pokemon').value.trim();
+  // Strip HTML-tags og begrens lengde
+  const cleanPokemon = rawPokemon.replace(/<[^>]*>/g,'').replace(/[^\w\sæøåÆØÅ!()-]/g,'').slice(0,40) || null;
+
+  const tierVal = parseInt(document.getElementById('raid-tier').value);
+  const validTiers = [1, 3, 5, 6];
+  const cleanTier = validTiers.includes(tierVal) ? tierVal : 5;
+
+  const timeVal = parseInt(document.getElementById('raid-time').value);
+  const validTimes = [10, 20, 30, 45];
+  const cleanTime = validTimes.includes(timeVal) ? timeVal : 20;
+
+  activeRaids[rawId] = {
+    pokemon: cleanPokemon,
+    tier: cleanTier,
+    expiresAt: now + cleanTime * 60000
+  };
+  closeRaidModal();
+  renderCards();
+}
+function clearRaid(id){delete activeRaids[id];renderCards();}
+
+// Oppdater bare når tabben er synlig — unødvendig å kjøre i bakgrunnen
+let refreshInterval = null;
+function startRefresh(){ refreshInterval = setInterval(renderCards, 30000); }
+function stopRefresh(){ clearInterval(refreshInterval); }
+document.addEventListener('visibilitychange', () => {
+  document.hidden ? stopRefresh() : startRefresh();
+});
+startRefresh();
+
+function togglePlace(id){
+  const p=places.find(b=>b.id===id);
+  const idx=selectedPlaces.findIndex(b=>b.id===id);
+  if(idx>=0)selectedPlaces.splice(idx,1);else selectedPlaces.push(p);
+  renderCards();
+  renderRoute();
+}
+
+function renderRoute(){
+  const container=document.getElementById('route-stops');
+  const stats=document.getElementById('route-stats');
+  const btn=document.getElementById('show-route-btn');
+  if(!selectedPlaces.length){
+    container.innerHTML=`<div class="empty-state">Gå til <strong style="color:var(--text)">Steder</strong> og trykk for å bygge ruten.</div>`;
+    stats.style.display='none';btn.style.display='none';return;
+  }
+  container.innerHTML=selectedPlaces.map((p,i)=>`
+    <div class="route-stop">
+      <span class="stop-num">${i+1}</span>
+      <div class="stop-info"><div class="stop-name">${esc(p.name)}</div><div class="stop-area">${esc(p.area)}${p.pilspris!==null?' · '+p.pilspris+' kr':''}</div></div>
+      <button class="stop-remove" onclick="event.stopPropagation();removeStop(${p.id})">✕</button>
+    </div>`).join('');
+  const hasPoke=selectedPlaces.filter(p=>p.stops>0);
+  const totalStops=hasPoke.reduce((s,p)=>s+p.stops,0);
+  const totalGyms=hasPoke.reduce((s,p)=>s+p.gyms,0);
+  const pricedPlaces=selectedPlaces.filter(p=>p.pilspris!==null);
+  const avgPrice=pricedPlaces.length ? Math.round(pricedPlaces.reduce((s,p)=>s+p.pilspris,0)/pricedPlaces.length) : null;
+  const allOpen=selectedPlaces.every(p=>isOpen(p)===true);
+  stats.style.display='block';
+  stats.innerHTML=`<strong>${selectedPlaces.length}</strong> stopp på ruten<br>
+    🟢 ~${totalStops} PokéStops · 🔴 ~${totalGyms} Gyms<br>
+    ${avgPrice!==null?`🍺 Snitt: <strong>${avgPrice} kr</strong><br>`:''}
+    ${allOpen?'🟩 Alle åpne nå':'⚠️ Sjekk åpningstider'}`;
+  btn.style.display='block';
+}
+
+function removeStop(id){selectedPlaces=selectedPlaces.filter(p=>p.id!==id);renderCards();renderRoute();}
+
+function clearRoute(){
+  selectedPlaces=[];renderCards();renderRoute();
+  if(map){
+    if(routeLayer){map.removeLayer(routeLayer);routeLayer=null;}
+    if(markerLayer){map.removeLayer(markerLayer);markerLayer=null;}
+  }
+}
+
+function showRoute(){switchTab('routes');setTimeout(()=>drawRoute(selectedPlaces),150);}
+
+function loadPreset(ids){
+  selectedPlaces=ids.map(id=>places.find(p=>p.id===id)).filter(Boolean);
+  renderCards();renderRoute();
+  switchTab('routes');
+  setTimeout(()=>drawRoute(selectedPlaces),250);
+}
+
+function drawRoute(toShow){
+  if(!map)initMap();
+  if(routeLayer){map.removeLayer(routeLayer);}
+  if(markerLayer){map.removeLayer(markerLayer);}
+  if(!toShow.length)return;
+  routeLayer=L.polyline(toShow.map(p=>[p.lat,p.lng]),{color:'#FFD700',weight:3,opacity:0.85,dashArray:'8,8'}).addTo(map);
+  markerLayer=L.layerGroup();
+  toShow.forEach((p,i)=>{
+    const raid=activeRaids[p.id];
+    const color=raid?'#F87171':(i===0?'#4ADE80':i===toShow.length-1?'#F87171':'#7C6FE8');
+    const icon=L.divIcon({
+      html:`<div style="background:${color};color:white;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.6);">${i+1}</div>`,
+      className:'',iconSize:[30,30],iconAnchor:[15,15]
+    });
+    const status=openStatus(p);
+    const mapsUrl=`https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;
+    const openIcon=status.open===true?'🟩':status.open===false?'🔴':'⚪';
+    const priceStr=p.pilspris!==null?`🍺 ${p.pilspris} kr`:'🍺 pris ukjent';
+    L.marker([p.lat,p.lng],{icon}).bindPopup(
+      `<strong style="font-size:14px">${esc(p.name)}</strong><br>📍 ${esc(p.area)}<br>
+      ${openIcon} ${esc(status.label)}<br>
+      ${priceStr}${p.stops?` · 🟢${p.stops} stops · 🔴${p.gyms} gyms`:''}
+      ${raid?`<br><span style="color:#f87171">⚔️ RAID — ${esc(raid.pokemon)||'ukjent'}</span>`:''}
+      <br><a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" style="color:#7C6FE8;font-weight:600;">🗺️ Veibeskrivelse</a>`
+    ).addTo(markerLayer);
+  });
+  markerLayer.addTo(map);
+  map.fitBounds(routeLayer.getBounds(),{padding:[40,40]});
+}
+
+function initMap(){
+  map=L.map('map').setView([59.917,10.752],13);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    attribution:'© OpenStreetMap, © CARTO',subdomains:'abcd',maxZoom:19
+  }).addTo(map);
+  // Vis bare kuraterte steder som faste markører på kartet — OSM-steder ville blitt for mange.
+  // OSM-steder vises i listen og kan legges til ruter derfra.
+  places.filter(p => p.source === 'curated').forEach(p=>{
+    const raid=activeRaids[p.id];
+    const color=p.type==='food'?'rgba(251,146,60,0.8)':raid?'rgba(248,113,113,0.85)':'rgba(124,111,232,0.75)';
+    const icon=L.divIcon({
+      html:`<div style="background:${color};width:12px;height:12px;border-radius:50%;border:1px solid rgba(255,255,255,0.5);"></div>`,
+      className:'',iconSize:[12,12],iconAnchor:[6,6]
+    });
+    const status=openStatus(p);
+    const mapsUrl=`https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;
+    const openIcon=status.open===true?'🟩':status.open===false?'🔴':'⚪';
+    const priceStr=p.pilspris!==null?`🍺 ${p.pilspris} kr`:'🍺 pris ukjent';
+    L.marker([p.lat,p.lng],{icon}).bindPopup(
+      `<strong>${esc(p.name)}</strong><br>📍 ${esc(p.area)}<br>
+      ${openIcon} ${esc(status.label)}<br>${priceStr}<br>
+      <a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" style="color:#7C6FE8;font-weight:600;">🗺️ Veibeskrivelse</a>`
+    ).addTo(map);
+  });
+}
+
+function switchTab(tab){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+tab).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b=>{
+    if((tab==='spots'&&b.textContent.includes('Steder'))||(tab==='routes'&&b.textContent.includes('Ruter')))
+      b.classList.add('active');
+  });
+  if(tab==='routes'&&!map)setTimeout(initMap,100);
+}
+
+function renderPresets(){
+  document.getElementById('preset-routes').innerHTML=presetRoutes.map(r=>
+    `<button class="preset-btn" onclick="loadPreset([${r.ids.join(',')}])">${r.name}<span>${r.desc}</span></button>`
+  ).join('');
+}
+
+document.getElementById('raid-modal').addEventListener('click',function(e){if(e.target===this)closeRaidModal();});
+
+renderCards();
+renderPresets();
+</script>
+</body>
+</html>
